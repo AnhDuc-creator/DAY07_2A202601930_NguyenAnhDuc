@@ -39,43 +39,44 @@ from src.embeddings import (
     _mock_embed,
 )
 
-DATA_DIR = "data/k4_ecommerce"
+DATA_DIR = os.getenv("LAB_DATA_DIR", "data/k4_ecommerce")
 
-# 5 benchmark query cua NHOM (phai trung voi REPORT_NHOM.md).
+# 5 benchmark query cua NHOM (thong nhat trong REPORT_NHOM.md).
+# expect_doc = doc_id cua tai lieu chua gold answer; dung de cham relevant.
 BENCHMARK = [
     {
         "id": 1,
-        "query": "Khi giao hàng bị chậm trễ thì người bán phải làm gì cho khách hàng?",
-        "gold": "Phải thông tin kịp thời cho khách hàng và tạo cơ hội để khách hàng có thể hủy hợp đồng nếu muốn (Điều 33 khoản 2).",
-        "expect_doc": "nd52-van-chuyen-giao-nhan",
+        "query": "Người mua có thể đổi trả trong vòng bao lâu sau khi nhận hàng?",
+        "gold": "(điền theo đúng nội dung file returns-policy.md)",
+        "expect_doc": "returns-policy",
         "filter": None,
     },
     {
         "id": 2,
-        "query": "Giá niêm yết trên website không ghi rõ đã bao gồm phí vận chuyển thì được hiểu thế nào?",
-        "gold": "Nếu không ghi rõ, giá niêm yết được hiểu là đã bao gồm mọi chi phí liên quan như thuế, phí đóng gói, phí vận chuyển (Điều 31 khoản 2).",
-        "expect_doc": "nd52-thong-tin-hang-hoa-gia-dieu-kien",
+        "query": "Người bán cần cung cấp những thông tin gì khi đăng bán sản phẩm?",
+        "gold": "(điền theo đúng nội dung file seller-listing.md)",
+        "expect_doc": "seller-listing",
         "filter": None,
     },
     {
         "id": 3,
-        "query": "Người bán trên sàn giao dịch thương mại điện tử có những trách nhiệm gì?",
-        "gold": "Cung cấp đầy đủ chính xác thông tin định danh khi đăng ký, cung cấp thông tin hàng hóa theo Điều 30 đến 34, bảo đảm tính trung thực, tuân thủ pháp luật về thanh toán quảng cáo khuyến mại sở hữu trí tuệ bảo vệ người tiêu dùng, và thực hiện nghĩa vụ thuế (Điều 37).",
-        "expect_doc": "nd52-trach-nhiem-nguoi-ban",
-        "filter": {"customer_role": "seller"},
-    },
-    {
-        "id": 4,
-        "query": "Hệ thống bị tấn công làm lộ thông tin cá nhân của người tiêu dùng thì phải thông báo cho cơ quan chức năng trong bao lâu?",
-        "gold": "Trong vòng 24 giờ sau khi phát hiện sự cố (Điều 72 khoản 3).",
-        "expect_doc": "nd52-bao-ve-thong-tin-ca-nhan",
+        "query": "Nếu thanh toán thất bại thì đơn hàng sẽ được xử lý như thế nào?",
+        "gold": "(điền theo đúng nội dung file payment-terms.md)",
+        "expect_doc": "payment-terms",
         "filter": None,
     },
     {
+        "id": 4,
+        "query": "Quy trình khiếu nại dành cho người bán như thế nào?",
+        "gold": "(điền theo đúng nội dung file seller-appeal.md)",
+        "expect_doc": "seller-appeal",
+        "filter": {"customer_role": "seller"},
+    },
+    {
         "id": 5,
-        "query": "Người bán không công bố thời hạn trả lời đề nghị giao kết hợp đồng thì sau bao lâu đề nghị hết hiệu lực?",
-        "gold": "Sau 12 giờ kể từ khi khách hàng gửi đề nghị giao kết mà không được trả lời thì đề nghị chấm dứt hiệu lực (Điều 20 khoản 2).",
-        "expect_doc": "nd52-quy-trinh-dat-hang",
+        "query": "Người dùng có thể yêu cầu gì liên quan đến dữ liệu cá nhân?",
+        "gold": "(điền theo đúng nội dung file privacy-and-data.md)",
+        "expect_doc": "privacy-and-data",
         "filter": None,
     },
 ]
@@ -88,6 +89,22 @@ SIMILARITY_PAIRS = [
     ("Thanh toán trực tuyến phải được mã hóa", "Bảo mật giao dịch thanh toán của khách hàng", "cao"),
     ("Quy định về đấu giá trực tuyến trên sàn thương mại điện tử", "Công thức tính diện tích hình tròn", "thấp"),
 ]
+
+
+def print_corpus_inventory() -> None:
+    """In bang kiem ke corpus: doc_id, so ky tu, metadata. Dung cho REPORT_NHOM muc 1."""
+    docs = load_documents(DATA_DIR)
+    print("\n## Bang 0 - Kiem ke corpus (REPORT_NHOM muc 1)\n")
+    print(f"Thu muc: {DATA_DIR} — tim thay {len(docs)} tai lieu\n")
+    print("| doc_id | So ky tu | customer_role | category | source_url co? | retrieved_at co? | document_version co? |")
+    print("|---|---|---|---|---|---|---|")
+    for doc in docs:
+        m = doc.metadata
+        print(
+            f"| {doc.id} | {len(doc.content)} | {m.get('customer_role', 'THIEU')} "
+            f"| {m.get('category', 'THIEU')} | {'co' if m.get('source_url') else 'THIEU'} "
+            f"| {'co' if m.get('retrieved_at') else 'THIEU'} | {'co' if m.get('document_version') else 'THIEU'} |"
+        )
 
 
 def select_embedder():
@@ -217,6 +234,7 @@ def main() -> int:
     if backend == "mock embeddings fallback":
         print("[!] Dang chay bang MOCK. Dat EMBEDDING_PROVIDER=local truoc khi lay so cho bao cao.")
 
+    print_corpus_inventory()
     print_strategy_comparison()
     print_similarity_table(embedder)
 

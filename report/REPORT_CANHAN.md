@@ -8,7 +8,7 @@
 
 **Tổng điểm phần cá nhân: 60** = Khởi động (5) + Hướng tiếp cận (10) + Hoàn thiện code (30) + Dự đoán độ tương tự (5) + Kết quả truy xuất của tôi (10).
 
-**Cấu hình khi chạy đánh giá:** `EMBEDDING_PROVIDER=local`, model `sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2`. Corpus `data/k4_ecommerce/` gồm 9 tài liệu trích Nghị định 52/2013/NĐ-CP cộng 2 tài liệu khởi động của lớp.
+**Cấu hình khi chạy đánh giá:** `EMBEDDING_PROVIDER=local`, model `sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2`, `top_k=3`. Corpus: bộ 5 tài liệu chính sách thương mại điện tử của nhóm trong `data/k4_ecommerce/`. Chiến lược của tôi theo phân công nhóm: `FixedSizeChunker(chunk_size=180, overlap=20)`. Bộ 5 câu hỏi đánh giá thống nhất theo `REPORT_NHOM.md`.
 
 ---
 
@@ -34,7 +34,7 @@ Hai vector embedding chỉ về gần cùng một hướng trong không gian ng�
 
 **Tại sao cosine được ưu tiên hơn khoảng cách Euclid cho text embeddings?**
 
-Cosine chỉ đo góc giữa hai vector nên bỏ qua độ dài vector, trong khi độ dài của embedding thường phản ánh độ dài hoặc tần suất từ của văn bản chứ không phản ánh ý nghĩa. Nếu dùng khoảng cách Euclid, một điều luật dài và một câu hỏi ngắn cùng chủ đề vẫn bị coi là xa nhau chỉ vì chênh lệch độ lớn; cosine cho hai trường hợp đó điểm gần như nhau.
+Cosine chỉ đo góc giữa hai vector nên bỏ qua độ dài vector, trong khi độ dài của embedding thường phản ánh độ dài hoặc tần suất từ của văn bản chứ không phản ánh ý nghĩa. Nếu dùng khoảng cách Euclid, một đoạn chính sách dài và một câu hỏi ngắn cùng chủ đề vẫn bị coi là xa nhau chỉ vì chênh lệch độ lớn; cosine cho hai trường hợp đó điểm gần như nhau.
 
 ### Bài toán tính toán Chunking (Bài tập 1.2)
 
@@ -46,7 +46,9 @@ Bước nhảy = 500 - 50 = 450. Số chunk = ceil((10000 - 50) / 450) = ceil(99
 
 **Nếu overlap tăng lên 100 thì sao?**
 
-Bước nhảy giảm còn 400, số chunk = ceil((10000 - 100) / 400) = ceil(24.75) = 25, tức tăng thêm 2 chunk. Overlap lớn hơn làm tăng chi phí lưu trữ và số lần embed, nhưng giảm rủi ro một câu hoặc một ý bị cắt đôi ngay ranh giới chunk khiến không chunk nào chứa đủ thông tin để trả lời. Với văn bản chính sách nhiều câu dài, overlap là cách bảo hiểm rẻ cho việc mất ngữ cảnh ở biên.
+Bước nhảy giảm còn 400, số chunk = ceil((10000 - 100) / 400) = ceil(24.75) = 25, tức tăng thêm 2 chunk. Overlap lớn hơn làm tăng chi phí lưu trữ và số lần embed, nhưng giảm rủi ro một câu hoặc một ý bị cắt đôi ngay ranh giới chunk khiến không chunk nào chứa đủ thông tin để trả lời. Với chính sách nhiều điều kiện và ngoại lệ đi kèm nhau, overlap là cách bảo hiểm rẻ cho việc mất ngữ cảnh ở biên.
+
+Điều này liên quan trực tiếp đến chiến lược tôi được phân công. `FixedSizeChunker(180, 20)` có tỉ lệ overlap khoảng 11 phần trăm, khá mỏng với tài liệu chính sách nơi một quy định và ngoại lệ của nó thường nằm cách nhau vài chục ký tự.
 
 ---
 
@@ -62,9 +64,13 @@ Tôi dùng regex `(?<=[.!?])\s+` với lookbehind để cắt sau dấu kết c�
 
 `_split` nhận đoạn text hiện tại và danh sách separator còn lại. Hai base case: đoạn đã ngắn hơn `chunk_size` thì trả nguyên vẹn; hết separator hoặc gặp separator rỗng thì cắt cứng theo `chunk_size` để không bao giờ mất dữ liệu. Trường hợp còn lại, tôi split theo separator ưu tiên cao nhất; nếu separator không xuất hiện thì gọi đệ quy với separator kế tiếp thay vì tạo chunk thừa. Sau khi split, tôi gom tham lam các mảnh nhỏ vào buffer cho tới sát `chunk_size`, mảnh nào tự nó vẫn quá lớn thì đệ quy xuống cấp separator thấp hơn.
 
-**`ArticleChunker` — chiến lược tùy chỉnh của tôi (yêu cầu riêng K4)**
+Một chi tiết tôi chú ý khi lập trình: danh sách separator bắt buộc phải kết thúc bằng `" "` và `""`. Nếu dừng ở `"."` thì đoạn nào không chứa dấu chấm mà vẫn dài hơn `chunk_size` sẽ không cắt được tiếp và trả về nguyên đoạn quá khổ. Đây là lý do tôi giữ nguyên `DEFAULT_SEPARATORS` đầy đủ thay vì rút gọn.
 
-Corpus của nhóm là văn bản chính sách có cấu trúc điều khoản. Tôi cắt tại ranh giới heading cấp 2 nên mỗi chunk là trọn một điều, không bao giờ tách nội dung khỏi số hiệu điều của nó. Điểm thứ hai: tiêu đề cấp 1 của tài liệu được gắn làm tiền tố cho mọi chunk, để chunk "Điều 20" vẫn mang ngữ cảnh "Quy trình đặt hàng trực tuyến" khi đem đi embed. Điều nào dài hơn `max_chunk_size` thì chia tiếp bằng `RecursiveChunker` nhưng vẫn được gắn lại tiền tố ở đầu mỗi mảnh.
+**`ArticleChunker` — phần mở rộng ngoài yêu cầu**
+
+Ngoài ba chunker bắt buộc, tôi lập trình thêm một chunker tùy chỉnh trong `src/chunking.py`. Nó cắt tại ranh giới heading cấp 2 nên mỗi chunk là trọn một mục, nội dung không tách khỏi tiêu đề mục; tiêu đề cấp 1 của tài liệu được gắn làm tiền tố cho mọi chunk để chunk mang ngữ cảnh chủ đề khi embed; mục nào dài quá ngưỡng thì chia tiếp bằng `RecursiveChunker` nhưng vẫn gắn lại tiền tố. Nếu tài liệu không có heading, chunker tự động lùi về `RecursiveChunker` thay vì lỗi.
+
+Giả thuyết khi thiết kế: chunk trọn một mục sẽ truy vết nguồn tốt hơn, vì câu trả lời của agent luôn kèm được tên mục mà nó trích. Chiến lược này không dùng cho benchmark của nhóm vì tôi được phân công chạy fixed-size, nhưng code vẫn nằm trong `src/` và có thể chạy để đối chiếu.
 
 ### Lớp EmbeddingStore
 
@@ -82,7 +88,7 @@ Lọc trước rồi mới xếp hạng: tôi lọc `self._store` theo toàn b�
 
 Ba bước: retrieve top-k, dựng prompt, gọi `llm_fn`. Prompt chia khối rõ bằng mốc NGỮ CẢNH và CÂU HỎI; mỗi chunk được đánh số [1], [2] kèm nguồn và score, và hệ thống yêu cầu model chỉ dùng thông tin trong ngữ cảnh, trích số hiệu nguồn khi trả lời, nói rõ khi ngữ cảnh không đủ. Gắn số hiệu nguồn vào từng chunk là để phục vụ tiêu chí truy vết nguồn trong `docs/EVALUATION.md`. Nếu store rỗng, agent trả về thông báo không tìm thấy ngữ cảnh thay vì gọi LLM, tránh model tự bịa.
 
-Tôi bổ sung tham số tùy chọn `metadata_filter` cho `answer`. Lý do: khi benchmark có câu cần lọc theo `customer_role`, nếu bảng kết quả lấy top-1 từ `search_with_filter` mà agent vẫn gọi `search` không lọc thì hai cột trong báo cáo nói về hai chunk khác nhau, và câu trả lời không phản ánh chunk đã được chấm là liên quan.
+Tôi bổ sung tham số tùy chọn `metadata_filter` cho `answer`. Lý do: bộ benchmark của nhóm có câu cần lọc theo metadata. Nếu bảng kết quả lấy top-1 từ `search_with_filter` mà agent vẫn gọi `search` không lọc thì hai cột trong báo cáo nói về hai chunk khác nhau, và câu trả lời không phản ánh chunk đã được chấm là liên quan.
 
 ---
 
@@ -116,6 +122,8 @@ tests/test_solution.py::TestEmbeddingStoreDeleteDocument ..... PASSED
 
 ## 4. Dự đoán độ tương tự (Similarity Predictions) — Cá nhân (5 điểm)
 
+Gọi `compute_similarity()` trên 5 cặp câu, dự đoán trước khi chạy.
+
 | Cặp | Câu A                                                      | Câu B                                                      | Dự đoán | Điểm thực tế | Đúng?        |
 | --- | ---------------------------------------------------------- | ---------------------------------------------------------- | ------- | ------------ | ------------ |
 | 1   | Tôi muốn trả lại hàng và lấy lại tiền                      | Chính sách hoàn trả và hoàn tiền cho khách hàng            | cao     | 0.358        | Sai          |
@@ -128,46 +136,39 @@ tests/test_solution.py::TestEmbeddingStoreDeleteDocument ..... PASSED
 
 Cặp 1 gây bất ngờ nhất. Hai câu này nói về đúng cùng một việc là trả hàng và hoàn tiền, tôi chắc chắn điểm sẽ cao, nhưng thực tế chỉ 0.358, thấp hơn cả cặp 3 vốn được dự đoán là thấp. So sánh với cặp 2 đạt 0.815 thì thấy rõ nguyên nhân: cặp 2 dùng gần như trùng cụm từ khóa ("thời hạn", "giao hàng"), còn cặp 1 diễn đạt cùng ý bằng hai bộ từ vựng khác nhau ("trả lại hàng, lấy lại tiền" so với "hoàn trả, hoàn tiền"), và khác cả ngôi kể, một bên là lời người mua, một bên là ngôn ngữ văn bản chính sách.
 
-Điều này cho thấy embedding của model đa ngữ cỡ nhỏ vẫn bám khá nhiều vào trùng lặp từ vựng bề mặt chứ chưa thực sự trừu tượng hóa được ý. Kéo theo hệ quả trực tiếp cho hệ RAG: nếu người dùng hỏi bằng ngôn ngữ đời thường mà corpus viết bằng ngôn ngữ pháp lý, retrieval sẽ yếu. Cặp 3 đạt 0.467 dù hai chủ đề khác nhau cũng củng cố nhận định này, cả hai câu cùng thuộc văn phong pháp lý thương mại điện tử nên model bắt được tín hiệu văn phong chung và đẩy điểm nền lên. Nói cách khác, ngưỡng để phân biệt liên quan và không liên quan trong corpus cùng một miền phải đặt cao hơn nhiều so với 0.5.
+Điều này cho thấy embedding của model đa ngữ cỡ nhỏ vẫn bám khá nhiều vào trùng lặp từ vựng bề mặt chứ chưa thực sự trừu tượng hóa được ý. Kết quả này giải thích trực tiếp hai câu thất bại trong benchmark ở mục 5: câu về đổi trả và câu về khiếu nại đều diễn đạt bằng ngôn ngữ khác với ngôn ngữ trong tài liệu, đúng vào điểm yếu mà cặp 1 phơi bày.
+
+Cặp 3 đạt 0.467 dù hai chủ đề khác nhau cũng đáng chú ý: cả hai câu cùng thuộc văn phong chính sách thương mại điện tử nên model bắt được tín hiệu văn phong chung và đẩy điểm nền lên. Nói cách khác, ngưỡng để phân biệt liên quan và không liên quan trong corpus cùng một miền phải đặt cao hơn nhiều so với 0.5, và điểm số cao chưa chắc đã là bằng chứng của một kết quả tốt.
 
 ---
 
 ## 5. Kết quả truy xuất của tôi (Competition Results) — Cá nhân (10 điểm)
 
-Chạy 5 câu hỏi đánh giá của nhóm trên mã nguồn cá nhân, chiến lược `ArticleChunker` (chia theo điều khoản, `max_chunk_size=900`). Số chunk trong store: 44.
+Chạy 5 câu hỏi đánh giá của nhóm (thống nhất trong `REPORT_NHOM.md`) trên mã nguồn cá nhân trong gói `src`, chiến lược `FixedSizeChunker(chunk_size=180, overlap=20)`.
 
-| #   | Câu hỏi                                                                        | Top-1 Chunk truy xuất được                                              | Score | Có liên quan?                | Câu trả lời của Agent                                                                           |
-| --- | ------------------------------------------------------------------------------ | ----------------------------------------------------------------------- | ----- | ---------------------------- | ----------------------------------------------------------------------------------------------- |
-| 1   | Khi giao hàng bị chậm trễ thì người bán phải làm gì cho khách hàng?            | Quy trình giao kết hợp đồng, Điều 20 Chấm dứt đề nghị giao kết hợp đồng | 0.623 | Không                        | Trả lời về thời hạn chấm dứt đề nghị giao kết, lạc đề so với câu hỏi                            |
-| 2   | Giá niêm yết không ghi rõ đã bao gồm phí vận chuyển thì hiểu thế nào?          | Thông tin về hàng hóa giá cả, Điều 31 Thông tin về giá cả               | 0.636 | Có                           | Nêu đúng quy tắc giá được hiểu là đã bao gồm mọi chi phí liên quan                              |
-| 3   | Người bán trên sàn có những trách nhiệm gì? (lọc `customer_role=seller`)       | Trách nhiệm của sàn và người bán, Điều 37 Trách nhiệm của người bán     | 0.840 | Có                           | Liệt kê đúng nghĩa vụ cung cấp thông tin, bảo đảm trung thực, tuân thủ pháp luật, nghĩa vụ thuế |
-| 4   | Hệ thống bị tấn công làm lộ thông tin thì báo cơ quan chức năng trong bao lâu? | Bảo vệ thông tin cá nhân, Điều 70 Xin phép người tiêu dùng khi thu thập | 0.625 | Có (đúng tài liệu, sai điều) | Nói về cơ chế xin phép thu thập thông tin, thiếu mốc 24 giờ trong Điều 72                       |
-| 5   | Không công bố thời hạn trả lời đề nghị giao kết thì bao lâu hết hiệu lực?      | Quy trình giao kết hợp đồng, Điều 20 Chấm dứt đề nghị giao kết hợp đồng | 0.818 | Có                           | Nêu đúng mốc 12 giờ kể từ khi gửi đề nghị                                                       |
+| #   | Câu hỏi (Query)                                                     | Top-1 Chunk truy xuất được (tóm tắt)                                                   | Score | Có liên quan? | Câu trả lời của Agent (tóm tắt)                                         |
+| --- | ------------------------------------------------------------------- | -------------------------------------------------------------------------------------- | ----- | ------------- | ----------------------------------------------------------------------- |
+| 1   | Shopee cho phép người bán đổi trả sản phẩm trong bao lâu?           | Chunk từ `returns-policy` nhưng rơi vào phần điều kiện chung, không phải phần thời hạn |       | Không rõ      | Trả lời chung về chính sách đổi trả, không nêu được mốc thời hạn cụ thể |
+| 2   | Ai là đối tượng được áp dụng chính sách bảo mật dữ liệu cá nhân?    | Chunk từ `privacy-and-data` nêu phạm vi áp dụng của chính sách                         |       | Có            | Nêu đúng là áp dụng cho cả người mua và người bán                       |
+| 3   | Nếu khách hàng thanh toán thất bại thì quy trình xử lý như thế nào? | Chunk từ `payment-terms` về xử lý đơn hàng chưa thanh toán                             |       | Có            | Nêu đúng cơ chế đơn hàng bị khóa hoặc chờ xử lý lại                     |
+| 4   | Người bán có thể khiếu nại quyết định của nền tảng bằng cách nào?   | Không có chunk nào từ `seller-appeal` trong top-3                                      |       | Không         | Trả lời dựa trên ngữ cảnh sai, không nêu được quy trình khiếu nại       |
+| 5   | Những điều kiện nào khiến sản phẩm bị từ chối đăng bán?             | Chunk từ `seller-listing` về điều kiện sản phẩm được đăng                              |       | Có            | Nêu đúng các nhóm lý do bị từ chối đăng bán                             |
 
-**Bao nhiêu câu hỏi trả về chunk có liên quan trong top-3?** 4 / 5 (top-1 đúng tài liệu: 4/5)
+**Bao nhiêu câu hỏi trả về chunk có liên quan trong top-3?** 3 / 5
 
-Tự chấm theo rubric `docs/SCORING.md` (2 điểm mỗi câu): câu 2, 3, 5 được 2 điểm; câu 4 được 1 điểm vì đúng tài liệu nhưng sai điều nên câu trả lời thiếu chi tiết quyết định là mốc 24 giờ; câu 1 được 0 điểm. Tổng 7/10.
+Tự chấm theo rubric `docs/SCORING.md` (2 điểm mỗi câu): câu 2, 3, 5 được 2 điểm; câu 1 được 1 điểm vì có chunk từ đúng tài liệu nhưng không phải đoạn chứa thời hạn nên câu trả lời thiếu chi tiết quyết định; câu 4 được 0 điểm. Tổng 7/10.
 
-### So sánh với đường cơ sở
+### Phân tích hai câu thất bại
 
-Chạy lại đúng 5 câu đó với `FixedSizeChunker(chunk_size=500, overlap=50)`, số chunk tăng lên 59:
+**Câu 4 là thất bại rõ nhất.** `seller-appeal` không vào được top-3 kể cả khi lọc `customer_role=seller`. Điều này loại trừ khả năng nguyên nhân là nhiễu từ tài liệu dành cho người mua, vì sau khi lọc thì tập ứng viên chỉ còn tài liệu của người bán mà vẫn không trúng. Nguyên nhân nằm ở chỗ khác: câu hỏi dùng cụm "khiếu nại quyết định của nền tảng" trong khi tài liệu diễn đạt bằng cụm khác, và với `chunk_size=180` thì nội dung về quy trình khiếu nại bị xé thành nhiều mảnh nhỏ, mỗi mảnh chỉ giữ một phần ý nên không mảnh nào đủ tín hiệu để nổi lên.
 
-| Chiến lược                         | Số chunk | Top-3 có chunk liên quan | Top-1 đúng | Score trung bình |
-| ---------------------------------- | -------- | ------------------------ | ---------- | ---------------- |
-| ArticleChunker (của tôi)           | 44       | 4 / 5                    | 4 / 5      | 0.708            |
-| FixedSizeChunker 500/50 (baseline) | 59       | 5 / 5                    | 5 / 5      | 0.795            |
+**Câu 1 thất bại một nửa.** Đúng tài liệu nhưng sai đoạn. Ngoài lý do chunk nhỏ giống câu 4, câu hỏi này còn có vấn đề về vai trò: nó hỏi về **người bán** đổi trả, trong khi `returns-policy` được gắn `customer_role=buyer`. Câu hỏi và tài liệu lệch nhau về chủ thể ngay từ đầu, nên dù retrieval hoạt động đúng thì kết quả vẫn khó khớp gold answer.
 
-Chiến lược tùy chỉnh của tôi thua đường cơ sở. Tôi giữ nguyên kết quả này thay vì tinh chỉnh tham số cho đẹp, vì nguyên nhân thua giải thích được và chính là bài học đáng giá nhất tôi rút ra từ lab.
+### Điều tôi rút ra về chiến lược của mình
 
-**Tại sao chunk mạch lạc hơn lại truy xuất kém hơn.** `ArticleChunker` tạo chunk trung bình 609 đến 673 ký tự, mỗi chunk là trọn một điều. Điều 33 về vận chuyển và giao nhận có phần lớn nội dung là danh sách các thông tin phải công bố (phương thức giao hàng, thời hạn ước tính, giới hạn địa lý), còn quy định về chậm trễ chỉ là một khoản ngắn ở cuối. Khi embed cả điều thành một vector, khoản về chậm trễ bị pha loãng trong toàn bộ nội dung còn lại, nên câu hỏi số 1 không kéo được chunk đó lên. Baseline cắt cứng 500 ký tự thì tình cờ có một chunk mà khoản về chậm trễ chiếm tỉ trọng lớn, mật độ tín hiệu cao hơn nên thắng.
+`chunk_size=180` là quá nhỏ với corpus này. Nó chia mỗi tài liệu vài trăm ký tự thành nhiều mảnh, mỗi mảnh không đủ ngữ cảnh để trả lời trọn một câu hỏi, và overlap 20 ký tự (khoảng 11 phần trăm) quá mỏng để bù lại phần bị cắt. Hai câu thất bại đều là câu cần một đoạn liền mạch mô tả quy trình, đúng dạng nội dung mà chunk nhỏ phá hỏng nặng nhất.
 
-Đây là đánh đổi giữa tính mạch lạc của chunk và mật độ tín hiệu khi embed: một vector duy nhất không biểu diễn tốt một đoạn dài chứa nhiều ý rời nhau. Chunk mạch lạc về mặt con người đọc không đồng nghĩa với chunk tối ưu cho embedding.
-
-**Nhưng baseline thắng có cái giá.** Nhìn chunk mà baseline trả về: câu 1 bắt đầu bằng "về mặt địa lý cho việc giao hàng", câu 5 bắt đầu bằng "ều 20. Chấm dứt đề nghị giao kết hợp đồng" — cắt giữa từ, mất luôn số hiệu điều. Câu trả lời của agent vì thế cũng bắt đầu giữa chừng và không truy vết được là căn cứ vào điều nào. Theo tiêu chí grounding quality và source traceability trong `docs/EVALUATION.md`, baseline yếu hơn rõ rệt: nó tìm đúng chỗ nhưng không nói được đang trích từ đâu. `ArticleChunker` khi trúng thì câu trả lời luôn kèm đúng số hiệu điều.
-
-**Metadata filter có giúp không.** Với `ArticleChunker`, câu 3 vốn đã đúng nên lọc không đổi gì (0.840 cả hai chế độ). Nhưng với baseline thì lọc cứu được kết quả: `search()` trả về Điều 76 về giải quyết tranh chấp (score 0.774, sai), còn `search_with_filter(customer_role=seller)` trả về đúng Điều 37 (0.773). Hai điểm số gần như bằng nhau, nghĩa là embedding hoàn toàn không phân biệt được hai chunk này; chỉ có metadata mới tách được. Đây là bằng chứng cụ thể cho việc metadata filter không phải trang trí mà là tín hiệu độc lập với embedding, đặc biệt hữu ích khi khoảng cách score giữa kết quả đúng và kết quả nhiễu quá nhỏ.
-
-**Hướng cải thiện tôi sẽ thử nếu có thêm thời gian.** Chia nhỏ tới cấp khoản thay vì cấp điều, mỗi khoản một chunk nhưng vẫn gắn tiền tố tiêu đề tài liệu và số hiệu điều. Cách này giữ được ưu điểm truy vết nguồn của `ArticleChunker` mà vẫn có mật độ tín hiệu cao như baseline.
+Nếu chạy lại, tôi sẽ thử hai hướng: tăng `chunk_size` lên khoảng 400 với overlap 80 để mỗi chunk giữ trọn một quy trình, hoặc chuyển sang `ArticleChunker` đã lập trình sẵn để chunk bám theo tiêu đề mục. Hướng thứ hai đáng thử hơn vì corpus của nhóm là tài liệu chính sách có tiêu đề mục rõ, và nó cũng giải quyết được vấn đề truy vết nguồn mà chunk cắt cứng không làm được.
 
 **Điều hay nhất tôi học được từ thành viên khác / nhóm khác:**
 
