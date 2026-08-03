@@ -5,6 +5,7 @@ from .chunking import (
     RecursiveChunker,
     SentenceChunker,
     compute_similarity,
+    ArticleChunker,
 )
 from .embeddings import (
     EMBEDDING_PROVIDER_ENV,
@@ -34,4 +35,5 @@ __all__ = [
     "LOCAL_EMBEDDING_MODEL",
     "OPENAI_EMBEDDING_MODEL",
     "EMBEDDING_PROVIDER_ENV",
+    "ArticleChunker",
 ]
